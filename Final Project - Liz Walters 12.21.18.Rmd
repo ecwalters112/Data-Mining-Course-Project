@@ -1,0 +1,190 @@
+---
+title: "Evaluating the Best Fit Model for the Outcome in Car Seat Sales"
+author: "Liz Walters"
+date: "12/21/2018"
+output: html_document
+---
+
+
+
+##Introduction 
+
+  For this assignment, I used the "Carseat" dataset from the text *"An Introduction to Satistical Learning"* to test what models express the best fit, from a supervised learning approach. The reason I chose to focus on linear models by a supervised learning approach is beacuse previous work I have done in data analysis and undergraduate work composed of linear regression models through statistical or econometric approaches, so I wanted to grasp linear model fits from a supervised learning stand point. Something that was discussed in class was that statiticians and econometricians are more interested in making inferences about a unique solution, but in data mining it is more of interest to make predictions for the already existent outcomes. 
+
+  I use this supervised learning approach to analyze if variables in the  "Carseat" dataset, which contains data for the sales of car seats in 400 different locations, are good model predictors of the outcome. To do so I split the dataset into training data, which is used to obtain the outcome b, and testing data, which is used to evaluate the model that predicts the outcome. In this supervised learning approach I want to see how well the the different variables in the "Carseat" dataset express predictive ability. To do so, after splitting the data into training and testing data, I will display the data by ggplot visualization to see the variations in variables, and then I will compare models for best fit by which has the lowest root mean squared error (RMSE). 
+
+
+
+##Data
+
+```{r}
+#Open the ISLR Package
+
+library(ISLR)
+
+#Upload the "Careseats" data from the ISLR package 
+
+data("Carseats")
+
+```
+
+The dependent variable is: 
+
+
+*Sales* - Unit sales (in thousands) at each location
+
+
+
+The predictors are: 
+
+
+*CompPrice* - Price charged by competitor at each location
+
+*Income* - Community income level (in thousands of dollars)
+
+*Advertising* - Local advertising budget for company at each location (in thousands of dollars)
+
+*Population* - Population size in region (in thousands)
+
+*Price* - Price company charges for car seats at each site
+
+*ShelveLoc* - A factor with levels Bad, Good and Medium indicating the quality of the shelving location for the car seats at each site
+
+*Age* - Average age of the local population
+
+*Education* - Education level at each location
+
+*Urban* - A factor with levels No and Yes to indicate whether the store is in an urban or rural location
+
+*US* - A factor with levels No and Yes to indicate whether the store is in the US or not
+
+
+```{r}
+
+#Split the data into training and testing 
+
+library(caret)
+set.seed(12345)
+in_train <- createDataPartition(y = Carseats$Sales, p = 3 / 4, list = FALSE)
+training <- Carseats[in_train, ]
+testing <- Carseats[-in_train, ]
+```
+
+##Visualization (ggplot)
+
+```{r}
+#Visualize the data using ggplot to show possible variations in predictors on the dependent variable 
+
+library(ggplot2)
+ggplot(training) + 
+  geom_point(aes(x = Price, y = Sales, 
+                 col = Age, shape = Urban, 
+                 fill = US)) + 
+  xlab("Store Price of Car Seats") + ylab(" Sales of Car Seats (in thousands)")
+```
+
+This plot shows a bit of variation in the data, but it also shows that the data has a trend directed downward and negatively correlated. So as prices of the carseats increase at the store locations, the sales of the carseats decrease. This would make sense with assumptions and outcomes.This plot depicts the assumption that the *Price* variable may be a good predictor for sales. 
+
+##Models 
+
+To evaluate the data predictor variables further I will use a supervised learning approach to analyze the best fit of the models. 
+
+```{r}
+ols <- lm(Sales ~ ., data = training)
+y_hat_ols <- predict(ols, newdata = testing)
+defaultSummary(data.frame(obs = testing$Sales, pred = y_hat_ols))
+
+```
+
+Root Mean Squared Error (RMSE) measures how close the observed data is to the models predicted values. Lower values indicate a better fit. I will summarize the RMSE for each model to compare which is the best fit model. 
+
+In this ols model the RMSE is 1.1339716.
+
+```{r}
+library(caret)
+ctrl <- trainControl(method = "cv", number = 10)
+set.seed(12345)
+ols_cv <- train(Sales ~ ., data = training, method = "lm", trControl = ctrl)
+ols_cv
+```
+
+In this model of ols_cv, k-fold cross validation is used. This method splits data sets into *k* mutually exclusive subsets. The RMSE is 1.04426. This is less than the original ols model. 
+
+```{r}
+# The AIC is best when closest to 1, this tool helps rank variations on the model.
+
+c(AIC = AIC(ols), formula = -2 * logLik(ols) + 2 * (length(coef(ols)) + 1))
+
+```
+
+Although the AIC is not close to 1, it is not too high so it shows variance in the model, but not a lot. 
+
+```{r}
+ols_AIC <- step(ols, trace = FALSE)
+ols_AIC
+```
+
+This step function dropped the *US*,  *Urban*, and *Population* predictors, which means they are lower ranked variables by the AIC. 
+
+```{r}
+setdiff(names(coef(ols)), names(coef(ols_AIC)))
+```
+
+```{r}
+# AIC predictions for RMSE
+
+y_hat_AIC <- predict(ols_AIC, newdata = testing)
+defaultSummary(data.frame(obs = testing$Sales, pred = y_hat_AIC))
+```
+
+Based on the AIC predictor model, the RMSE is 1.133929. This is slightly less then the ols model, but still higher then the ols_cv model. 
+
+```{r}
+
+# As mentioned in class, Lasso depicts the best fraction of the training data to use. 
+
+library(caret)
+ctrl <- trainControl(method = "cv", number = 10)
+set.seed(12345)
+enetGrid <- expand.grid(.lambda = seq(.05, 1, length = 10), .fraction = seq(.05, 1, length = 10))
+lasso <- train(formula(ols), data = training, method = "enet", trControl = ctrl, tuneGrid = enetGrid)
+lasso
+```
+
+This table shows the RMSE for each possible fraction point from .05 to 1. 
+
+```{r}
+y_hat_lasso <- predict(lasso, newdata = testing)
+defaultSummary(data.frame(obs = testing$Sales, pred = y_hat_lasso))
+```
+
+The RMSE for the lasso model is 1.1403213, which is the highest of the previous models. 
+
+```{r}
+library(caret)
+ctrl <- trainControl(method = "cv", number = 10)
+set.seed(12345)
+pls <- train(formula(ols), data = training, method = "pls", tuneLength = 20, trControl = ctrl)
+pls
+```
+
+The Partial Least Squares model shows RMSE based on the number of components included in the analysis. This shows that RMSE is lowest when all 10 components are included. 
+
+
+```{r}
+y_hat_pls <- predict(pls, newdata = testing)
+defaultSummary(data.frame(obs = testing$Sales, pred = y_hat_pls))
+```
+
+The RMSE of PLS is 1.1323899. This RMSE is very close to the same value as all other model, except ols_cv is slightly lower. 
+
+#Conclusion
+
+Based on the models ran, the ols_cv model showed the lowest RMSE value at 1.004426. Based on this information we would say that the ols model using cross validation is the strongest predictive model, but it is also only slightly lower then the other models. This leaves us with an inconclusive understanding of the best possible fit model, which could be evaluated further with more models. However, based on this particular evaluation ols using cross validation is the best fit predictor model for car seat sales in over 400 different store locations. 
+
+
+#Resources
+
+*Class lecture and notes material*
+
+*James, G., Witten, D., Hastie, T., & Tibshirani, R. (2015). An Introduction to Statistical Learning with Applications in R (Vol. 6th, Ser. 417)*
